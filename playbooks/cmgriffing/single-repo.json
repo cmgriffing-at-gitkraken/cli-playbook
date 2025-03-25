@@ -1,0 +1,10 @@
+{
+    "setup": [
+        "echo 'Running setup commands...'",
+        "echo 'Setup complete'"
+    ],
+    "runtime": [
+        "echo 'Running runtime commands...'",
+        "echo 'Runtime complete'"
+    ]
+}
