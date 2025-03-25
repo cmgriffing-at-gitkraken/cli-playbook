@@ -86,6 +86,36 @@ execute_command() {
     "
 }
 
+# Check for accessibility permissions
+check_accessibility_permission() {
+    # Try to use System Events - this will trigger permission prompt if needed
+    if ! osascript -e 'tell application "System Events" to get name of first process' &>/dev/null; then
+        echo "Error: Accessibility permission is required"
+        echo "Please grant accessibility permission to Terminal/iTerm in System Preferences > Security & Privacy > Privacy > Accessibility"
+        echo "After granting permission, you may need to restart your terminal application"
+        exit 1
+    fi
+}
+
+# Check for screen recording permissions
+check_screen_recording_permission() {
+    # Try to list devices - this will trigger permission prompt if needed
+    ffmpeg -f avfoundation -list_devices true -i "" &>/dev/null
+    
+    # Check if we can actually access screen devices
+    if ! ffmpeg -f avfoundation -list_devices true -i "" 2>&1 | grep -q "Capture screen"; then
+        echo "Error: Screen recording permission is required"
+        echo "Please grant screen recording permission to Terminal/iTerm in System Preferences > Security & Privacy > Privacy > Screen Recording"
+        echo "After granting permission, you may need to restart your terminal application"
+        exit 1
+    fi
+}
+
+# Check for required permissions
+echo "Checking permissions..."
+check_accessibility_permission
+check_screen_recording_permission
+
 # Process setup commands first
 echo "Running setup commands..."
 while IFS= read -r cmd; do
@@ -96,6 +126,7 @@ done < <(jq -r '.setup[]' "$JSON_FILE" 2>/dev/null)
 
 # Start screen recording
 echo "Starting screen recording..."
+
 # List available devices and capture the screen index
 SCREEN_DEVICE=$(ffmpeg -f avfoundation -list_devices true -i "" 2>&1 | grep "Capture screen" | head -n1 | grep -o "[0-9]")
 if [ -z "$SCREEN_DEVICE" ]; then
@@ -133,3 +164,12 @@ kill -SIGINT $FFMPEG_PID
 sleep 2
 
 echo "Recording saved to: $MP4_FILE"
+
+# Print completion message to the controlled terminal
+osascript -e "
+tell application \"$TERMINAL_APP\"
+    activate
+end tell
+"
+sleep 0.5
+execute_command "echo '\033[1;32mRecording Completed!\033[0m File: $MP4_FILE'"
