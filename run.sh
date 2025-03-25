@@ -247,7 +247,7 @@ handle_error() {
         kill -SIGINT $FFMPEG_PID 2>/dev/null || true
     fi
     
-    exit $code
+    exit "$code"
 }
 
 # Set up error trap
