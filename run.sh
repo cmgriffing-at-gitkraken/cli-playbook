@@ -1,5 +1,11 @@
 #!/bin/bash
 
+# Exit on any error
+set -e
+
+# Exit on pipe failures (important for command chains)
+set -o pipefail
+
 # Default terminal application
 TERMINAL_APP="iTerm"
 
@@ -227,3 +233,22 @@ sleep 0.5
 
 # TODO: Kind of annoying that we type echo and then actually echo
 execute_command "echo 'Recording Completed!'"
+
+# Function to handle errors
+handle_error() {
+    local line=$1
+    local command=$2
+    local code=$3
+    echo "Error at line $line: Command '$command' exited with status $code"
+    
+    # If recording is in progress, try to stop it
+    if [ -n "${FFMPEG_PID:-}" ]; then
+        echo "Stopping screen recording due to error..."
+        kill -SIGINT $FFMPEG_PID 2>/dev/null || true
+    fi
+    
+    exit $code
+}
+
+# Set up error trap
+trap 'handle_error ${LINENO} "$BASH_COMMAND" $?' ERR
