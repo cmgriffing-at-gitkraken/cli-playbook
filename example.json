@@ -1,0 +1,18 @@
+{
+    "setup": [
+      "echo 'Running setup commands...'",
+      "echo 'Setup complete'",
+      "clear"
+    ],
+    "runtime": [
+      {
+        "command": "echo 'Running runtime commands...'",
+        "sleep": 3
+      },
+      {
+        "command": "echo 'Runtime complete'",
+        "sleep": 4
+      }
+    ]
+  }
+  
