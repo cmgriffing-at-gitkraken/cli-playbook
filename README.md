@@ -6,10 +6,10 @@ A tool for recording and executing CLI command sequences with screen recording c
 
 CLI Playbook allows you to define a sequence of commands in a JSON playbook file and execute them while recording your screen. The tool is particularly useful for:
 
-- Creating CLI demos
+- Creating CLI demos and tutorials
 - Documenting development workflows
 - Automating repetitive command sequences
-- Creating tutorial videos
+- Recording step-by-step technical procedures
 
 ## Requirements
 
@@ -25,7 +25,7 @@ brew install jq ffmpeg
 
 ## Usage
 
-1. Create a JSON playbook file with your commands:
+1. Create a JSON playbook file with your command sequence:
 
 ```json
 {
@@ -40,7 +40,7 @@ brew install jq ffmpeg
     },
     {
       "command": "curl http://localhost:3000",
-      "sleep": 5
+      "sleep": 2
     }
   ]
 }
@@ -52,26 +52,56 @@ brew install jq ffmpeg
 ./run.sh your-playbook.json
 ```
 
+## Playbook Structure
+
+Your playbook JSON file should contain two main sections:
+
+### 1. Setup Section
+- An array of commands to run before recording starts
+- Used for preparation steps (installing dependencies, cleaning directories, etc.)
+- These commands are not recorded
+- Example:
+  ```json
+  "setup": [
+    "npm install",
+    "mkdir -p output"
+  ]
+  ```
+
+### 2. Runtime Section
+- An array of command objects that will be executed during recording
+- Each command object can have:
+  - `command`: The CLI command to execute
+  - `sleep`: Time to wait after command execution (in seconds)
+- Example:
+  ```json
+  "runtime": [
+    {
+      "command": "ls -la",
+      "sleep": 3
+    }
+  ]
+  ```
+
 ## How It Works
 
 1. **Setup Phase**: 
    - Executes all commands in the `setup` array
-   - These commands are not recorded
-   - Useful for preparation steps like installing dependencies
+   - No recording during this phase
+   - Prepares environment for main execution
 
 2. **Recording Phase**:
    - Starts screen recording
-   - Executes all commands in the `runtime` array
-   - Each command is executed in iTerm2
-   - Commands have a 5-second delay between them
-   - Screen recording captures all runtime commands
+   - Executes each command in the `runtime` array
+   - Respects sleep intervals between commands
+   - Captures all terminal output
 
 3. **Output**:
-   - Recordings are saved to the `recordings` directory
-   - Videos are automatically converted from MOV to MP4 format
-   - Each recording has a timestamp in the filename
+   - Recordings are saved in the `recordings` directory
+   - Videos are automatically converted from MOV to MP4
+   - Filenames include timestamps for easy identification
 
-## File Structure
+## Project Structure
 
 ```
 .
@@ -84,14 +114,21 @@ brew install jq ffmpeg
 
 ```json
 {
-    "setup": [
-        "echo 'Running setup commands...'",
-        "echo 'Setup complete'"
-    ],
-    "runtime": [
-        "echo 'Running runtime commands...'",
-        "echo 'Runtime complete'"
-    ]
+  "setup": [
+    "echo 'Running setup commands...'",
+    "echo 'Setup complete'",
+    "clear"
+  ],
+  "runtime": [
+    {
+      "command": "echo 'Running runtime commands...'",
+      "sleep": 3
+    },
+    {
+      "command": "echo 'Runtime complete'",
+      "sleep": 4
+    }
+  ]
 }
 ```
 
