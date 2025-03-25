@@ -34,8 +34,14 @@ brew install jq ffmpeg
     "npm install"
   ],
   "runtime": [
-    "npm start",
-    "curl http://localhost:3000"
+    {
+      "command": "npm start",
+      "sleep": 5
+    },
+    {
+      "command": "curl http://localhost:3000",
+      "sleep": 5
+    }
   ]
 }
 ```
