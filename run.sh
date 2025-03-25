@@ -111,10 +111,62 @@ check_screen_recording_permission() {
     fi
 }
 
-# Check for required permissions
-echo "Checking permissions..."
+# Check if terminal application is running and launch it if needed
+check_terminal_app() {
+    local was_launched=false
+    local terminal_lower=$(echo "$TERMINAL_APP" | tr '[:upper:]' '[:lower:]')
+    
+    # Case-insensitive check for running terminal
+    if ! osascript -e "
+        tell application \"System Events\"
+            set processList to name of every process
+            set foundProcess to false
+            repeat with processName in processList
+                if (processName as string) contains \"$TERMINAL_APP\" or (lowercase of (processName as string)) contains \"$terminal_lower\" then
+                    set foundProcess to true
+                    exit repeat
+                end if
+            end repeat
+            return foundProcess
+        end tell
+    " | grep -q "true"; then
+        echo "Launching $TERMINAL_APP..."
+        osascript -e "tell application \"$TERMINAL_APP\" to activate"
+        was_launched=true
+        sleep 1
+    fi
+    
+    # If we just launched the terminal, make it full screen
+    if [ "$was_launched" = true ]; then
+        echo "Setting $TERMINAL_APP to full screen..."
+        if [ "$TERMINAL_APP" = "iTerm" ] || [ "$terminal_lower" = "iterm" ]; then
+            # iTerm-specific full screen command
+            osascript -e '
+            tell application "iTerm"
+                tell current window
+                    set fullscreen to true
+                end tell
+            end tell
+            '
+        else
+            # Generic approach for other terminals
+            osascript -e "
+            tell application \"System Events\"
+                tell process \"$TERMINAL_APP\"
+                    keystroke \"f\" using {command down, control down}
+                end tell
+            end tell
+            "
+        fi
+        sleep 1
+    fi
+}
+
+# Check for required permissions and applications
+echo "Checking permissions and applications..."
 check_accessibility_permission
 check_screen_recording_permission
+check_terminal_app
 
 # Process setup commands first
 echo "Running setup commands..."
@@ -172,4 +224,6 @@ tell application \"$TERMINAL_APP\"
 end tell
 "
 sleep 0.5
-execute_command "echo '\033[1;32mRecording Completed!\033[0m File: $MP4_FILE'"
+
+# TODO: Kind of annoying that we type echo and then actually echo
+execute_command "echo 'Recording Completed!'"
