@@ -46,34 +46,30 @@ MP4_FILE="$RECORDINGS_DIR/screen_recording_$TIMESTAMP.mp4"
 # Calculate delays for 150 WPM typing simulation
 CHAR_DELAY=0.008  # 150 WPM = ~750 chars per minute = ~0.008s per char
 
-# Function to type a single character in terminal
+# Function to type a single character using System Events
 type_char() {
     local char="$1"
     osascript -e "
-    tell application \"$TERMINAL_APP\"
-        tell current window
-            tell current session
-                write text \"$char\" without newline
-            end tell
-        end tell
+    tell application \"System Events\"
+        keystroke \"$char\"
     end tell
     "
 }
 
-# Function to execute commands in terminal with typing simulation
+# Function to execute commands with typing simulation
 execute_command() {
     local cmd="$1"
     local length=${#cmd}
     
-    # Create/activate terminal window if needed
+    # Activate terminal window
     osascript -e "
     tell application \"$TERMINAL_APP\"
         activate
-        if not (exists current window) then
-            create window with default profile
-        end if
     end tell
     "
+    
+    # Small delay to ensure terminal is ready
+    sleep 0.5
     
     # Type each character with delay
     for (( i=0; i<length; i++ )); do
@@ -84,12 +80,8 @@ execute_command() {
 
     # Send return key to execute the command
     osascript -e "
-    tell application \"$TERMINAL_APP\"
-        tell current window
-            tell current session
-                write text \"\" with newline
-            end tell
-        end tell
+    tell application \"System Events\"
+        keystroke return
     end tell
     "
 }
