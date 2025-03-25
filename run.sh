@@ -1,8 +1,12 @@
 #!/bin/bash
 
+# Default terminal application
+TERMINAL_APP="iTerm"
+
 # Parse arguments
 while [[ "$#" -gt 0 ]]; do
     case $1 in
+        -t|--terminal) TERMINAL_APP="$2"; shift ;;
         *) JSON_FILE="$1" ;;
     esac
     shift
@@ -20,7 +24,8 @@ done
 # Check if a file was provided as an argument
 if [ -z "$JSON_FILE" ]; then
     echo "Error: Please provide a JSON file as an argument"
-    echo "Usage: $0 <filename.json>"
+    echo "Usage: $0 [--terminal <app_name>] <filename.json>"
+    echo "       Default terminal is iTerm"
     exit 1
 fi
 
@@ -41,11 +46,11 @@ MP4_FILE="$RECORDINGS_DIR/screen_recording_$TIMESTAMP.mp4"
 # Calculate delays for 150 WPM typing simulation
 CHAR_DELAY=0.008  # 150 WPM = ~750 chars per minute = ~0.008s per char
 
-# Function to type a single character in iTerm
+# Function to type a single character in terminal
 type_char() {
     local char="$1"
     osascript -e "
-    tell application \"iTerm\"
+    tell application \"$TERMINAL_APP\"
         tell current window
             tell current session
                 write text \"$char\" without newline
@@ -55,14 +60,14 @@ type_char() {
     "
 }
 
-# Function to execute commands in iTerm with typing simulation
+# Function to execute commands in terminal with typing simulation
 execute_command() {
     local cmd="$1"
     local length=${#cmd}
     
-    # Create/activate iTerm window if needed
+    # Create/activate terminal window if needed
     osascript -e "
-    tell application \"iTerm\"
+    tell application \"$TERMINAL_APP\"
         activate
         if not (exists current window) then
             create window with default profile
@@ -79,7 +84,7 @@ execute_command() {
 
     # Send return key to execute the command
     osascript -e "
-    tell application \"iTerm\"
+    tell application \"$TERMINAL_APP\"
         tell current window
             tell current session
                 write text \"\" with newline
