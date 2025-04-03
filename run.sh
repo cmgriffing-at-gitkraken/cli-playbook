@@ -65,19 +65,67 @@ calculate_runtime() {
     echo $((setup_time + runtime_time + buffer_time))
 }
 
-# Replace the execute_command function with this naturalistic typing version
-execute_command() {
-    local cmd="$1"
-    
-    # Activate terminal window
+# Replace the focus_terminal function with fullscreen detection
+focus_terminal() {
+    # Try to activate terminal
     osascript -e "
     tell application \"$TERMINAL_APP\"
         activate
     end tell
     "
     
-    # Small delay to ensure terminal is ready
+    # Short delay for activation
     sleep 0.5
+    
+    # Check if we're in fullscreen mode and get frontmost app
+    local check_result=$(osascript -e '
+        tell application "System Events"
+            # Get frontmost app
+            set frontApp to first application process whose frontmost is true
+            set frontAppName to name of frontApp
+            
+            # Check if any window is fullscreen
+            set isFullscreen to false
+            tell frontApp
+                repeat with w in windows
+                    if value of attribute "AXFullScreen" of w is true then
+                        set isFullscreen to true
+                        exit repeat
+                    end if
+                end repeat
+            end tell
+            
+            return {frontAppName & "," & isFullscreen}
+        end tell
+    ')
+    
+    # Parse results
+    local frontmost_app=$(echo "$check_result" | cut -d',' -f1)
+    local is_fullscreen=$(echo "$check_result" | cut -d',' -f2)
+    
+    if [ "$is_fullscreen" = "true" ]; then
+        echo "Error: Cannot proceed when a fullscreen window is active."
+        echo "Please exit fullscreen mode before running the script."
+        return 1
+    fi
+    
+    if [[ ! "$frontmost_app" =~ $TERMINAL_APP ]]; then
+        echo "Error: Could not focus terminal window. Please ensure $TERMINAL_APP is visible and on the current workspace."
+        echo "Current frontmost app: $frontmost_app"
+        return 1
+    fi
+    
+    return 0
+}
+
+# Update execute_command to fail if focus isn't available
+execute_command() {
+    local cmd="$1"
+    
+    # Try to focus the terminal window
+    if ! focus_terminal; then
+        exit 1
+    fi
     
     # Split command into words while preserving spaces and quotes
     local IFS=$'\n'
@@ -91,14 +139,11 @@ execute_command() {
         
         # Type the word in random chunks
         while [ $pos -lt $len ]; do
-            # Random chunk size between 1 and 3 characters
             local chunk_size=$(( (RANDOM % 3) + 2 ))
-            # Make sure we don't exceed word length
             if [ $(($pos + $chunk_size)) -gt $len ]; then
                 chunk_size=$(($len - $pos))
             fi
             
-            # Extract and type the chunk
             local chunk="${word:$pos:$chunk_size}"
             osascript -e "
             tell application \"System Events\"
