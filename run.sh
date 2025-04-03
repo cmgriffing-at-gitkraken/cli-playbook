@@ -6,7 +6,7 @@ set -e
 # Exit on pipe failures (important for command chains)
 set -o pipefail
 
-# Default terminal application
+# Default terminal applicationp
 TERMINAL_APP="iTerm"
 
 # Parse arguments
@@ -45,27 +45,29 @@ fi
 RECORDINGS_DIR="recordings"
 mkdir -p "$RECORDINGS_DIR"
 
-# Generate unique filenames for the recording
-TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
-MP4_FILE="$RECORDINGS_DIR/screen_recording_$TIMESTAMP.mp4"
-
-# Calculate delays for 150 WPM typing simulation
-CHAR_DELAY=0.008  # 150 WPM = ~750 chars per minute = ~0.008s per char
-
-# Function to type a single character using System Events
-type_char() {
-    local char="$1"
-    osascript -e "
-    tell application \"System Events\"
-        keystroke \"$char\"
-    end tell
-    "
+# Add this function near the top of the file, before execute_command
+calculate_runtime() {
+    local json_file="$1"
+    local setup_time=0
+    local runtime_time=0
+    
+    # Calculate setup commands time (0.5s per command + typing time)
+    setup_time=$(jq -r '.setup | length' "$json_file")
+    setup_time=$((setup_time * 1))  # 1 second per setup command
+    
+    # Calculate runtime commands time
+    runtime_time=$(jq -r '.runtime | map(.sleep // 5) | add' "$json_file")
+    
+    # Add buffer time for startup, permissions, and final message
+    local buffer_time=10
+    
+    # Total time in seconds
+    echo $((setup_time + runtime_time + buffer_time))
 }
 
-# Function to execute commands with typing simulation
+# Replace the execute_command function with this naturalistic typing version
 execute_command() {
     local cmd="$1"
-    local length=${#cmd}
     
     # Activate terminal window
     osascript -e "
@@ -77,14 +79,48 @@ execute_command() {
     # Small delay to ensure terminal is ready
     sleep 0.5
     
-    # Type each character with delay
-    for (( i=0; i<length; i++ )); do
-        char="${cmd:$i:1}"
-        type_char "$char"
-        sleep $CHAR_DELAY
+    # Split command into words while preserving spaces and quotes
+    local IFS=$'\n'
+    local words=($(echo "$cmd" | sed -E $'s/[[:space:]]+/\\\n/g'))
+    
+    # Type each word in random chunks
+    for i in "${!words[@]}"; do
+        local word="${words[$i]}"
+        local len=${#word}
+        local pos=0
+        
+        # Type the word in random chunks
+        while [ $pos -lt $len ]; do
+            # Random chunk size between 1 and 3 characters
+            local chunk_size=$(( (RANDOM % 3) + 2 ))
+            # Make sure we don't exceed word length
+            if [ $(($pos + $chunk_size)) -gt $len ]; then
+                chunk_size=$(($len - $pos))
+            fi
+            
+            # Extract and type the chunk
+            local chunk="${word:$pos:$chunk_size}"
+            osascript -e "
+            tell application \"System Events\"
+                keystroke \"${chunk}\"
+                delay 0.05
+            end tell
+            "
+            
+            pos=$(($pos + $chunk_size))
+        done
+        
+        # Add space between words (except for last word)
+        if [ "$i" -lt "$(( ${#words[@]} - 1 ))" ]; then
+            osascript -e "
+            tell application \"System Events\"
+                keystroke space
+            end tell
+            "
+        fi
     done
-
-    # Send return key to execute the command
+    
+    # Execute the command
     osascript -e "
     tell application \"System Events\"
         keystroke return
@@ -99,43 +135,65 @@ check_accessibility_permission() {
         echo "Error: Accessibility permission is required"
         echo "Please grant accessibility permission to Terminal/iTerm in System Preferences > Security & Privacy > Privacy > Accessibility"
         echo "After granting permission, you may need to restart your terminal application"
-        exit 1
+        return 1
     fi
 }
 
-# Check for screen recording permissions
+# Update the check_screen_recording_permission function
 check_screen_recording_permission() {
-    # Try to list devices - this will trigger permission prompt if needed
-    ffmpeg -f avfoundation -list_devices true -i "" &>/dev/null
+    echo "Checking screen recording permission..."
     
-    # Check if we can actually access screen devices
-    if ! ffmpeg -f avfoundation -list_devices true -i "" 2>&1 | grep -q "Capture screen"; then
-        echo "Error: Screen recording permission is required"
-        echo "Please grant screen recording permission to Terminal/iTerm in System Preferences > Security & Privacy > Privacy > Screen Recording"
-        echo "After granting permission, you may need to restart your terminal application"
-        exit 1
+    # Try a test recording for 1 second
+    TEST_FILE="/tmp/test_recording.mov"
+    if screencapture -V 1.0 "$TEST_FILE" 2>/dev/null; then
+        echo "Screen recording permission verified"
+        rm -f "$TEST_FILE"
+        return 0
+    else
+        echo "Screen recording permission error detected."
+        echo "Please ensure screen recording permission is granted to $TERMINAL_APP in:"
+        echo "System Preferences > Security & Privacy > Privacy > Screen Recording"
+        echo "After granting permission, please:"
+        echo "1. Quit $TERMINAL_APP completely"
+        echo "2. Relaunch $TERMINAL_APP"
+        return 1
     fi
+}
+
+# Replace the verify_terminal_permissions function with this version
+verify_terminal_permissions() {
+    local terminal_app="$1"
+    echo "Verifying permissions for $terminal_app..."
+    
+    # Try a quick test recording to verify permissions
+    TEST_FILE="/tmp/test_recording.mov"
+    if screencapture -V 1.0 "$TEST_FILE" 2>/dev/null; then
+        echo "Screen recording permission verified"
+        rm -f "$TEST_FILE"
+        return 0
+    fi
+    
+    echo "Warning: Unable to verify screen recording permissions"
+    echo "Please make sure to grant screen recording permissions to $terminal_app"
+    echo "System Preferences > Security & Privacy > Privacy > Screen Recording"
+    return 1
 }
 
 # Check if terminal application is running and launch it if needed
 check_terminal_app() {
     local was_launched=false
-    local terminal_lower=$(echo "$TERMINAL_APP" | tr '[:upper:]' '[:lower:]')
     
-    # Case-insensitive check for running terminal
-    if ! osascript -e "
-        tell application \"System Events\"
-            set processList to name of every process
-            set foundProcess to false
-            repeat with processName in processList
-                if (processName as string) contains \"$TERMINAL_APP\" or (lowercase of (processName as string)) contains \"$terminal_lower\" then
-                    set foundProcess to true
-                    exit repeat
-                end if
-            end repeat
-            return foundProcess
-        end tell
-    " | grep -q "true"; then
+    # First check if we have accessibility permissions
+    if ! osascript -e 'tell application "System Events" to get name of first process' &>/dev/null; then
+        echo "Error: Accessibility permission is required"
+        echo "Please grant accessibility permission to Terminal/iTerm in:
+System Preferences > Security & Privacy > Privacy > Accessibility"
+        echo "After granting permission, you may need to restart your terminal application"
+        exit 1
+    fi
+    
+    # Simple check if the terminal is running
+    if ! pgrep -i "$TERMINAL_APP" >/dev/null; then
         echo "Launching $TERMINAL_APP..."
         osascript -e "tell application \"$TERMINAL_APP\" to activate"
         was_launched=true
@@ -168,10 +226,22 @@ check_terminal_app() {
     fi
 }
 
-# Check for required permissions and applications
-echo "Checking permissions and applications..."
-check_accessibility_permission
-check_screen_recording_permission
+# Uncomment and modify the permission checks
+echo "Checking accessibility permission..."
+if ! check_accessibility_permission; then
+    exit 1
+fi
+
+echo "Checking screen recording permission..."
+if ! check_screen_recording_permission; then
+    exit 1
+fi
+
+# Add this call before starting the recording
+echo "Verifying terminal permissions..."
+verify_terminal_permissions "$TERMINAL_APP"
+
+echo "Checking terminal application..."
 check_terminal_app
 
 # Process setup commands first
@@ -182,21 +252,33 @@ while IFS= read -r cmd; do
     fi
 done < <(jq -r '.setup[]' "$JSON_FILE" 2>/dev/null)
 
-# Start screen recording
+# Replace the recording section with this version
 echo "Starting screen recording..."
 
-# List available devices and capture the screen index
-SCREEN_DEVICE=$(ffmpeg -f avfoundation -list_devices true -i "" 2>&1 | grep "Capture screen" | head -n1 | grep -o "[0-9]")
-if [ -z "$SCREEN_DEVICE" ]; then
-    echo "Error: Could not find screen capture device"
-    echo "Available devices:"
-    ffmpeg -f avfoundation -list_devices true -i "" 2>&1 | grep -A4 "AVFoundation"
+# Calculate expected runtime
+TOTAL_RUNTIME=$(calculate_runtime "$JSON_FILE")
+echo "Estimated runtime: $TOTAL_RUNTIME seconds"
+
+# Generate unique filenames for the recording
+TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
+RECORDING_FILE="$RECORDINGS_DIR/screen_recording_$TIMESTAMP.mov"
+MP4_FILE="$RECORDINGS_DIR/screen_recording_$TIMESTAMP.mp4"
+
+# Start the recording
+echo "Starting recording to $RECORDING_FILE..."
+screencapture -V "$TOTAL_RUNTIME.0" "$RECORDING_FILE" &
+RECORDING_PID=$!
+
+sleep 2
+
+# Verify recording process started
+if ! ps -p $RECORDING_PID > /dev/null; then
+    echo "Error: Recording process failed to start"
     exit 1
 fi
 
-# Record screen using the detected device index
-ffmpeg -f avfoundation -i "${SCREEN_DEVICE}:none" -framerate 30 -c:v libx264 -preset ultrafast -pix_fmt yuv420p "$MP4_FILE" &
-FFMPEG_PID=$!
+echo "Recording process started with PID: $RECORDING_PID"
+RECORDING_START_TIME=$SECONDS
 
 # Process runtime commands
 echo "Running runtime commands..."
@@ -214,14 +296,79 @@ jq -c '.runtime[]' "$JSON_FILE" | while read -r line; do
     fi
 done
 
-# Stop screen recording
+# Stop recording with better error handling
 echo "Stopping screen recording..."
-kill -SIGINT $FFMPEG_PID
+kill -SIGINT $RECORDING_PID
 
-# Wait a moment for the recording to finish writing
-sleep 2
+# Calculate actual runtime
+ACTUAL_RUNTIME=$((SECONDS - RECORDING_START_TIME))
+MINIMUM_RUNTIME=5  # Minimum seconds needed for a valid recording
 
-echo "Recording saved to: $MP4_FILE"
+# Wait for recording to complete
+echo "Waiting for recording to complete..."
+while [ $((SECONDS - RECORDING_START_TIME)) -lt $TOTAL_RUNTIME ]; do
+    sleep 1
+    echo -n "."
+done
+echo  # New line after dots
+
+# Additional wait to ensure file is fully written
+sleep 3
+
+# Verify recording duration and file
+if [ $ACTUAL_RUNTIME -lt $MINIMUM_RUNTIME ]; then
+    echo "Error: Recording duration too short ($ACTUAL_RUNTIME seconds)"
+    echo "Expected at least $MINIMUM_RUNTIME seconds"
+    exit 1
+fi
+
+if [ ! -f "$RECORDING_FILE" ]; then
+    echo "Error: Recording file was not created at: $RECORDING_FILE"
+    echo "Available files in recordings directory:"
+    ls -la "$RECORDINGS_DIR"
+    exit 1
+fi
+
+# Get file size and verify it's not empty
+FILE_SIZE=$(stat -f %z "$RECORDING_FILE")
+if [ "$FILE_SIZE" -lt 1000 ]; then  # Less than 1KB
+    echo "Error: Recording file is too small ($FILE_SIZE bytes)"
+    exit 1
+fi
+
+echo "Recording completed successfully:"
+echo "- Duration: $ACTUAL_RUNTIME seconds"
+echo "- File size: $FILE_SIZE bytes"
+echo "- Location: $RECORDING_FILE"
+
+# Convert to MP4 with better error handling
+if command -v ffmpeg &> /dev/null; then
+    echo "Converting recording to MP4 format..."
+    if [ ! -f "$RECORDING_FILE" ]; then
+        echo "Error: Source recording file not found: $RECORDING_FILE"
+        exit 1
+    fi
+    
+    echo "Starting conversion from $RECORDING_FILE to $MP4_FILE"
+    if ffmpeg -i "$RECORDING_FILE" \
+        -c:v libx264 -preset medium \
+        -pix_fmt yuv420p \
+        -movflags +faststart \
+        -y "$MP4_FILE" 2>"$RECORDINGS_DIR/conversion_error.log"; then
+        
+        echo "Converted successfully to: $MP4_FILE"
+        echo "MP4 file size: $(stat -f %z "$MP4_FILE") bytes"
+        rm "$RECORDING_FILE"  # Remove the original .mov file
+    else
+        echo "Warning: MP4 conversion failed. Error log:"
+        cat "$RECORDINGS_DIR/conversion_error.log"
+        echo "Keeping original .mov file: $RECORDING_FILE"
+        echo "Available files in recordings directory:"
+        ls -la "$RECORDINGS_DIR"
+    fi
+else
+    echo "Recording saved as: $RECORDING_FILE"
+fi
 
 # Print completion message to the controlled terminal
 osascript -e "
@@ -242,9 +389,9 @@ handle_error() {
     echo "Error at line $line: Command '$command' exited with status $code"
     
     # If recording is in progress, try to stop it
-    if [ -n "${FFMPEG_PID:-}" ]; then
+    if [ -n "${RECORDING_PID:-}" ]; then
         echo "Stopping screen recording due to error..."
-        kill -SIGINT $FFMPEG_PID 2>/dev/null || true
+        kill -SIGINT $RECORDING_PID 2>/dev/null || true
     fi
     
     exit "$code"
