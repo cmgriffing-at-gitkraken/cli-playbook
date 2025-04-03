@@ -2,6 +2,8 @@
 
 A tool for recording and executing CLI command sequences with screen recording capabilities.
 
+![](./example.gif)
+
 ## Overview
 
 CLI Playbook allows you to define a sequence of commands in a JSON playbook file and execute them while recording your screen. The tool is particularly useful for:
