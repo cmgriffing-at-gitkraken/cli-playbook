@@ -19,6 +19,7 @@ CLI Playbook allows you to define a sequence of commands in a JSON playbook file
 - iTerm2 (for command execution)
 
 Install dependencies using Homebrew:
+
 ```bash
 brew install jq ffmpeg
 ```
@@ -30,17 +31,18 @@ brew install jq ffmpeg
 ```json
 {
   "setup": [
-    "cd /your/project",
-    "npm install"
+    "echo 'Running setup commands...'",
+    "echo 'Setup complete'",
+    "clear"
   ],
   "runtime": [
     {
-      "command": "npm start",
-      "sleep": 5
+      "command": "echo 'Running runtime commands...'",
+      "sleep": 3
     },
     {
-      "command": "curl http://localhost:3000",
-      "sleep": 2
+      "command": "echo 'Runtime complete'",
+      "sleep": 4
     }
   ]
 }
@@ -57,6 +59,7 @@ brew install jq ffmpeg
 Your playbook JSON file should contain two main sections:
 
 ### 1. Setup Section
+
 - An array of commands to run before recording starts
 - Used for preparation steps (installing dependencies, cleaning directories, etc.)
 - These commands are not recorded
@@ -69,6 +72,7 @@ Your playbook JSON file should contain two main sections:
   ```
 
 ### 2. Runtime Section
+
 - An array of command objects that will be executed during recording
 - Each command object can have:
   - `command`: The CLI command to execute
@@ -85,12 +89,14 @@ Your playbook JSON file should contain two main sections:
 
 ## How It Works
 
-1. **Setup Phase**: 
+1. **Setup Phase**:
+
    - Executes all commands in the `setup` array
    - No recording during this phase
    - Prepares environment for main execution
 
 2. **Recording Phase**:
+
    - Starts screen recording
    - Executes each command in the `runtime` array
    - Respects sleep intervals between commands
